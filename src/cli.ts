@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import 'dotenv/config';
 import { main } from "./index.js";
 
 main().catch((error) => {

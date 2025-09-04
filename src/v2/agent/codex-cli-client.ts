@@ -40,8 +40,8 @@ export class CodexCLIClient extends EventEmitter {
     }
     
     try {
-      // Start codex CLI in interactive mode
-      this.codexProcess = spawn(this.codexPath, ['--json'], {
+      // Start codex CLI in proto mode for stdin/stdout communication
+      this.codexProcess = spawn(this.codexPath, ['proto'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,

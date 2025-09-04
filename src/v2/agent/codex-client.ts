@@ -19,12 +19,22 @@ export class CodexClient {
     config: CodexConfig = {}
   ) {
     const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error('OPENAI_API_KEY is required');
+    
+    // Only require API key if not using Codex CLI
+    const useCodexCLI = process.env.USE_CODEX_CLI === 'true';
+    if (!apiKey && !useCodexCLI) {
+      throw new Error('OPENAI_API_KEY is required when not using Codex CLI');
     }
     
-    this.openai = new OpenAI({ apiKey });
-    this.model = config.model || 'gpt-5';
+    // Only initialize OpenAI client if we have an API key
+    if (apiKey) {
+      this.openai = new OpenAI({ apiKey });
+    } else {
+      // Create a dummy client for CLI mode
+      this.openai = null as any;
+    }
+    
+    this.model = config.model || process.env.OPENAI_MODEL || 'gpt-5';
     this.temperature = config.temperature ?? 0.1;
     this.maxTokens = config.maxTokens ?? 2000;
     
@@ -36,6 +46,10 @@ export class CodexClient {
   }
   
   async complete(prompt: string, options: Partial<CodexConfig> = {}): Promise<string> {
+    if (!this.openai) {
+      throw new Error('OpenAI client not initialized. Use Codex CLI mode instead.');
+    }
+    
     try {
       const response = await this.openai.chat.completions.create({
         model: options.model || this.model,
