@@ -17,12 +17,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/softkr/acp-codex-bridge.git"
+    "url": "git+https://github.com/softkr/acp-codex.git"
   },
   "bugs": {
-    "url": "https://github.com/softkr/acp-codex-bridge/issues"
+    "url": "https://github.com/softkr/acp-codex/issues"
   },
-  "homepage": "https://github.com/softkr/acp-codex-bridge#readme",
+  "homepage": "https://github.com/softkr/acp-codex#readme",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
