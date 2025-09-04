@@ -7,6 +7,18 @@
 **Production-ready bridge connecting OpenAI Codex CLI & API to Zed editor via the Agent Client Protocol (ACP)**
 
 > 🎯 Supports both [OpenAI Codex CLI](https://github.com/openai/codex) (`@openai/codex`) and OpenAI API (GPT-5)
+> ⚡ Now with `proto` mode support and automatic environment configuration via `dotenv`
+
+## Prerequisites
+
+- **Node.js** >= 18.0.0
+- **OpenAI Codex CLI** (for CLI mode) - Must support `proto` mode
+  ```bash
+  npm install -g @openai/codex
+  # OR
+  brew install codex
+  ```
+- **OpenAI API Key** (for API fallback mode only)
 
 ## Quick Start
 
@@ -19,34 +31,62 @@ npm install -g @openai/codex
 # OR
 brew install codex
 
+# Verify installation and proto mode support
+codex --version  # Should be 0.29.0 or later
+
 # Sign in with ChatGPT account
 codex
 ```
 
-#### 2. Setup ACP Bridge
+#### 2. Setup Environment
 ```bash
-# Check system compatibility & get Zed configuration
-npx @softkr/acp-codex --setup
+# Create .env file for local development
+cat > .env << EOF
+# Use Codex CLI mode (recommended)
+USE_CODEX_CLI=true
 
-# Test connection
-npx @softkr/acp-codex --test
+# Optional: Specify Codex CLI path if not in PATH
+# CODEX_CLI_PATH=/opt/homebrew/bin/codex
+EOF
+```
+
+#### 3. Setup ACP Bridge
+```bash
+# Install and run
+npx @softkr/acp-codex
+
+# Or install globally
+npm install -g @softkr/acp-codex
+acp-codex
 ```
 
 ### Option B: Using OpenAI API (Fallback)
 
-#### 1. Set OpenAI API Key
+#### 1. Setup Environment
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
+# Create .env file
+cat > .env << EOF
+# Use OpenAI API mode
+USE_CODEX_CLI=false
+
+# Required for API mode
+OPENAI_API_KEY=sk-your-api-key-here
+
+# Optional: Model configuration
+CODEX_MODEL=gpt-5
+CODEX_TEMPERATURE=0.1
+CODEX_MAX_TOKENS=2000
+EOF
 ```
 
 #### 2. Setup ACP Bridge
 ```bash
-npx @softkr/acp-codex --setup
+npx @softkr/acp-codex
 ```
 
 ### 3. Add to Zed settings.json
 
-#### For Codex CLI:
+#### For Codex CLI (Proto Mode):
 ```json
 {
   "agent_servers": {
@@ -56,6 +96,7 @@ npx @softkr/acp-codex --setup
       "env": { 
         "USE_CODEX_CLI": "true",
         "ACP_PERMISSION_MODE": "acceptEdits"
+        // Codex CLI path auto-detected, no API key needed
       }
     }
   }
@@ -71,7 +112,7 @@ npx @softkr/acp-codex --setup
       "args": ["@softkr/acp-codex"],
       "env": { 
         "USE_CODEX_CLI": "false",
-        "OPENAI_API_KEY": "your-api-key-here",
+        "OPENAI_API_KEY": "sk-your-api-key-here",
         "CODEX_MODEL": "gpt-5",
         "ACP_PERMISSION_MODE": "acceptEdits"
       }
@@ -82,9 +123,10 @@ npx @softkr/acp-codex --setup
 
 ## Features
 
-- **🚀 Dual Mode Support** - Use OpenAI Codex CLI or OpenAI API (GPT-5)
+- **🚀 Dual Mode Support** - Use OpenAI Codex CLI (proto mode) or OpenAI API (GPT-5)
 - **🎯 Production Ready** - 94/100 quality score, comprehensive error handling
 - **⚡ Enhanced ACP Compliance** - 90% of full ACP specification implemented
+- **🔧 Auto-Configuration** - Environment variables via `.env` with `dotenv`
 - **📍 Real-time File Tracking** - Tool call locations enable "follow-along" in Zed editor
 - **📋 Execution Plans** - Dynamic task plans with progress tracking for complex operations
 - **🔄 Rich Tool Output** - File diffs, enhanced titles, and contextual formatting
@@ -103,22 +145,34 @@ npx @softkr/acp-codex --setup
 | `acceptEdits` | Auto-accept file edits | Recommended workflow |  
 | `bypassPermissions` | Allow all operations | Trusted environments |
 
-### Environment Variables
+### Environment Variables (.env Support)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `USE_CODEX_CLI` | `true` | Use Codex CLI if installed |
-| `CODEX_CLI_PATH` | `codex` | Path to Codex CLI binary |
-| `OPENAI_API_KEY` | required* | OpenAI API key (for API mode) |
-| `CODEX_MODEL` | `gpt-5` | OpenAI model to use (API mode) |
-| `CODEX_TEMPERATURE` | `0.1` | Temperature for completions |
-| `CODEX_MAX_TOKENS` | `2000` | Max tokens per completion |
-| `ACP_PERMISSION_MODE` | `default` | Permission behavior |
-| `ACP_MAX_TURNS` | `100` | Session limit (0 = unlimited) |
-| `ACP_DEBUG` | `false` | Enable debug logging |
-| `ACP_LOG_FILE` | none | Log to file |
+The bridge uses `dotenv` for automatic environment variable loading from `.env` files.
 
-*Only required when `USE_CODEX_CLI=false`
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `USE_CODEX_CLI` | `true` | Use Codex CLI (proto mode) if available | No |
+| `CODEX_CLI_PATH` | `codex` | Path to Codex CLI binary | No |
+| `OPENAI_API_KEY` | - | OpenAI API key | Only when `USE_CODEX_CLI=false` |
+| `CODEX_MODEL` | `gpt-5` | OpenAI model (API mode) | No |
+| `CODEX_TEMPERATURE` | `0.1` | Temperature for completions | No |
+| `CODEX_MAX_TOKENS` | `2000` | Max tokens per completion | No |
+| `ACP_PERMISSION_MODE` | `default` | Permission behavior | No |
+| `ACP_MAX_TURNS` | `100` | Session limit (0 = unlimited) | No |
+| `ACP_DEBUG` | `false` | Enable debug logging | No |
+| `ACP_LOG_FILE` | - | Log to file | No |
+
+#### Working Modes
+
+1. **Codex CLI Mode** (`USE_CODEX_CLI=true`)
+   - Uses local Codex CLI via `proto` mode
+   - No API key required
+   - Automatically detects Codex CLI installation
+
+2. **OpenAI API Mode** (`USE_CODEX_CLI=false`)
+   - Direct API calls to OpenAI
+   - Requires `OPENAI_API_KEY`
+   - Fallback when Codex CLI is not available
 
 ### Runtime Permission Switching
 
@@ -135,8 +189,8 @@ Please refactor the authentication module
 # System diagnostics (compatibility score)
 npx @softkr/acp-codex --diagnose
 
-# Permission help
-npx @softkr/acp-codex --reset-permissions
+# Check Codex CLI installation
+codex --version  # Should show 0.29.0 or later
 
 # Debug mode
 ACP_DEBUG=true npx @softkr/acp-codex
@@ -144,22 +198,41 @@ ACP_DEBUG=true npx @softkr/acp-codex
 
 ### Common Issues
 
-**API Key Error**
+**Server Shut Down Unexpectedly**
+- **Symptom**: Server exits during startup or first request
+- **Cause**: Incorrect CLI mode or missing dependencies
+- **Solution**:
+  ```bash
+  # Ensure proto mode is used (not --json)
+  # Check .env file
+  cat .env  # Should contain USE_CODEX_CLI=true
+  
+  # Verify Codex CLI is installed
+  which codex  # Should return path
+  codex --version  # Should be 0.29.0+
+  
+  # Run with debug logging
+  ACP_DEBUG=true npm run dev
+  ```
+
+**API Key Error (API Mode Only)**
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
+# Only needed when USE_CODEX_CLI=false
+echo "USE_CODEX_CLI=false" >> .env
+echo "OPENAI_API_KEY=sk-your-key" >> .env
+```
+
+**Codex CLI Not Found**
+```bash
+# Install Codex CLI
+npm install -g @openai/codex
+# Or specify path in .env
+echo "CODEX_CLI_PATH=/path/to/codex" >> .env
 ```
 
 **Non-TTY Environment**
 ```json
 { "env": { "ACP_PERMISSION_MODE": "acceptEdits" } }
-```
-
-**Custom Model Selection**
-```json
-{ "env": { 
-  "CODEX_MODEL": "gpt-5-turbo",
-  "CODEX_TEMPERATURE": "0.2"
-} }
 ```
 
 **Context Window Warnings**
@@ -209,18 +282,62 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ### Build from Source
 ```bash
-git clone https://github.com/softkr/acp-codex-bridge.git
-cd acp-codex-bridge
-pnpm install && pnpm run build
+git clone https://github.com/softkr/acp-codex.git
+cd acp-codex
+pnpm install
+
+# Setup environment
+cp .env.example .env  # Copy example configuration
+# Edit .env to set USE_CODEX_CLI and other options
+
+# Build
+pnpm run build
 ```
 
-### Commands
+### Development Workflow
 ```bash
-pnpm run dev        # Hot reload development
+# Development with hot reload (uses dotenv)
+pnpm run dev
+
+# Production build
+pnpm run build
+pnpm start
+
+# Testing
 pnpm run test       # Run test suite  
 pnpm run validate   # Full validation (typecheck + lint + test)
+
+# Diagnostics
 pnpm run diagnose   # System diagnostics
 ```
+
+### Environment Setup
+
+1. **Local Development**: Create `.env` file at project root
+   ```bash
+   # For Codex CLI mode
+   USE_CODEX_CLI=true
+   
+   # For API mode
+   # USE_CODEX_CLI=false
+   # OPENAI_API_KEY=sk-your-key
+   ```
+
+2. **Mode Switching**: Toggle between CLI and API modes
+   ```bash
+   # Switch to CLI mode
+   sed -i '' 's/USE_CODEX_CLI=false/USE_CODEX_CLI=true/' .env
+   
+   # Switch to API mode (requires API key)
+   sed -i '' 's/USE_CODEX_CLI=true/USE_CODEX_CLI=false/' .env
+   ```
+
+3. **Debug Logging**: Enable verbose output
+   ```bash
+   ACP_DEBUG=true pnpm run dev
+   ```
+
+⚠️ **Important**: Never commit `.env` with real secrets. Use `.env.example` for templates.
 
 ## Architecture
 
