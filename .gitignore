@@ -35,6 +35,10 @@ ANALYSIS.md
 TODO.md
 NEXT_STEPS.md
 
+# Local ACP/Codex session artifacts
+.acp-sessions/
+.claude/
+
 # Test files (temporary, not tracked)
 test-*.js
 *test-report*.json
