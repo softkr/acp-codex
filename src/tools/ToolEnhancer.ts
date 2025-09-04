@@ -511,6 +511,14 @@ export class ToolEnhancer {
       return `[WEBFETCH] ${url || 'URL'} (${lines} lines, ${chars} chars fetched)\n${output}`;
     }
 
+    // Handle bash operations - special formatting with command line
+    if (toolNameLower.includes('bash') || toolNameLower.includes('shell')) {
+      const command = this.extractCommand(context.input);
+      if (command) {
+        return `$ ${command}\n${output}`;
+      }
+    }
+
     // Default formatting
     return `[${toolName.toUpperCase()}] ${output}`;
   }
@@ -595,5 +603,21 @@ export class ToolEnhancer {
     }
 
     return 'other';
+  }
+
+  /**
+   * Extracts command from bash input
+   */
+  private extractCommand(input: unknown): string | null {
+    if (!this.isValidInput(input)) return null;
+    
+    const inputObj = input as Record<string, unknown>;
+    if (inputObj.command) {
+      const cmd = String(inputObj.command);
+      // Truncate very long commands for readability
+      return cmd.length > 60 ? cmd.substring(0, 57) + '...' : cmd;
+    }
+    
+    return null;
   }
 }

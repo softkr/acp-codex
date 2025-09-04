@@ -31,7 +31,7 @@ export class CodexClient {
       this.openai = new OpenAI({ apiKey });
     } else {
       // Create a dummy client for CLI mode
-      this.openai = null as any;
+      this.openai = null as unknown as OpenAI;
     }
     
     this.model = config.model || process.env.OPENAI_MODEL || 'gpt-5';

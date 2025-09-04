@@ -42,11 +42,11 @@ export class CodexCLIClient extends EventEmitter {
     try {
       // Start codex CLI in proto mode for stdin/stdout communication
       this.codexProcess = spawn(this.codexPath, ['proto'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],  // Capture stderr for better error handling
         env: {
           ...process.env,
-          CODEX_NO_TELEMETRY: '1',
-          CODEX_JSON_OUTPUT: '1'
+          RUST_LOG: 'error',  // Only show errors from Rust
+          CODEX_NO_TELEMETRY: '1'
         }
       });
       
@@ -54,8 +54,16 @@ export class CodexCLIClient extends EventEmitter {
         this.handleOutput(data.toString());
       });
       
+      // Handle stderr to catch connection issues
       this.codexProcess.stderr?.on('data', (data) => {
-        this.log.error('codex.cli.stderr', { error: data.toString() });
+        const errorText = data.toString().trim();
+        if (errorText) {
+          this.log.error('codex.cli.stderr', { error: errorText });
+          // Don't emit error for warnings, only for actual errors
+          if (errorText.toLowerCase().includes('error') || errorText.toLowerCase().includes('failed')) {
+            this.emit('error', new Error(`Codex CLI error: ${errorText}`));
+          }
+        }
       });
       
       this.codexProcess.on('error', (error) => {
@@ -63,9 +71,32 @@ export class CodexCLIClient extends EventEmitter {
         this.emit('error', error);
       });
       
-      this.codexProcess.on('exit', (code) => {
-        this.log.info('codex.cli.exit', { code });
-        this.emit('exit', code);
+      this.codexProcess.on('exit', (code, signal) => {
+        this.log.info('codex.cli.exit', { code, signal });
+        if (code !== 0 && code !== null) {
+          this.emit('error', new Error(`Codex CLI exited with code ${code}`));
+        } else {
+          this.emit('exit', code);
+        }
+      });
+      
+      // Wait a bit to ensure process is stable before considering it connected
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          resolve(undefined);
+        }, 1000); // Wait 1 second
+        
+        const errorHandler = (error: Error) => {
+          clearTimeout(timeout);
+          reject(error);
+        };
+        
+        this.once('error', errorHandler);
+        
+        setTimeout(() => {
+          this.removeListener('error', errorHandler);
+          resolve(undefined);
+        }, 1000);
       });
       
       this.log.info('codex.cli.connected');
@@ -121,17 +152,17 @@ export class CodexCLIClient extends EventEmitter {
   /**
    * Execute a code completion request
    */
-  async complete(prompt: string, options: any = {}): Promise<string> {
+  async complete(prompt: string, options: Record<string, unknown> = {}): Promise<string> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Codex CLI completion timeout'));
       }, 30000);
       
-      const handler = (message: any) => {
+      const handler = (message: Record<string, unknown>) => {
         if (message.type === 'completion' && message.id === options.id) {
           clearTimeout(timeout);
           this.removeListener('message', handler);
-          resolve(message.content || '');
+          resolve(String(message.content || ''));
         }
       };
       
@@ -200,13 +231,26 @@ export class CodexCLIClient extends EventEmitter {
    */
   static async isInstalled(): Promise<boolean> {
     return new Promise((resolve) => {
-      const check = spawn('which', ['codex']);
-      check.on('exit', (code) => {
-        resolve(code === 0);
-      });
-      check.on('error', () => {
+      try {
+        const check = spawn('which', ['codex'], { stdio: 'ignore' });
+        
+        const timeout = setTimeout(() => {
+          check.kill('SIGTERM');
+          resolve(false);
+        }, 2000);
+        
+        check.on('exit', (code) => {
+          clearTimeout(timeout);
+          resolve(code === 0);
+        });
+        
+        check.on('error', () => {
+          clearTimeout(timeout);
+          resolve(false);
+        });
+      } catch {
         resolve(false);
-      });
+      }
     });
   }
   
@@ -215,21 +259,32 @@ export class CodexCLIClient extends EventEmitter {
    */
   static async getVersion(): Promise<string | null> {
     return new Promise((resolve) => {
-      const proc = spawn('codex', ['--version']);
-      let version = '';
-      
-      proc.stdout?.on('data', (data) => {
-        version += data.toString();
-      });
-      
-      proc.on('exit', () => {
-        const match = version.match(/(\d+\.\d+\.\d+)/);
-        resolve(match ? match[1] : null);
-      });
-      
-      proc.on('error', () => {
+      try {
+        const proc = spawn('codex', ['--version'], { stdio: 'pipe' });
+        let version = '';
+        
+        const timeout = setTimeout(() => {
+          proc.kill('SIGTERM');
+          resolve(null);
+        }, 3000);
+        
+        proc.stdout?.on('data', (data) => {
+          version += data.toString();
+        });
+        
+        proc.on('exit', () => {
+          clearTimeout(timeout);
+          const match = version.match(/(\d+\.\d+\.\d+)/);
+          resolve(match ? match[1] : null);
+        });
+        
+        proc.on('error', () => {
+          clearTimeout(timeout);
+          resolve(null);
+        });
+      } catch {
         resolve(null);
-      });
+      }
     });
   }
   

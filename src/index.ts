@@ -7,7 +7,12 @@ import { Orchestrator } from './v2/agent/orchestrator.js';
 
 export async function main() {
   const argv = process.argv.slice(2);
-  const logger = new Logger({ level: (process.env.ACP_DEBUG === 'true' ? 'debug' : 'info') as any });
+  const logger = new Logger({ level: (process.env.ACP_DEBUG === 'true' ? 'debug' : 'info') as 'debug' | 'info' });
+  
+  // Set default to Codex CLI mode if not specified
+  if (!process.env.USE_CODEX_CLI) {
+    process.env.USE_CODEX_CLI = 'true';  // Default to Codex CLI mode
+  }
 
   if (argv.includes('--diagnose') || argv.includes('--diagnostics')) {
     const report = v2Diagnostics(logger);
@@ -41,23 +46,44 @@ export async function main() {
     return;
   }
 
-  // Start v2 runtime
-  const io = new ProtocolIO(logger);
-  const perms = new PermissionEngine(logger);
-  const rt = new Runtime(logger);
-  const orch = new Orchestrator(logger, io, perms, rt);
+  try {
+    // Start v2 runtime
+    const io = new ProtocolIO(logger);
+    const perms = new PermissionEngine(logger);
+    const rt = new Runtime(logger);
+    const orch = new Orchestrator(logger, io, perms, rt);
 
-  io.attach(process.stdin, process.stdout);
-  orch.start();
+    io.attach(process.stdin, process.stdout);
+    await orch.start();
 
-  // Keep process alive and handle shutdown
-  process.stdin.resume();
-  const shutdown = (sig: string) => {
-    logger.info('shutdown.signal', { sig });
-    io.dispose();
-    process.exit(0);
-  };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+    // Keep process alive and handle shutdown
+    process.stdin.resume();
+    const shutdown = (sig: string) => {
+      logger.info('shutdown.signal', { sig });
+      io.dispose();
+      process.exit(0);
+    };
+    
+    // Handle unexpected errors
+    process.on('uncaughtException', (error) => {
+      logger.error('process.uncaughtException', { error: error.message, stack: error.stack });
+      shutdown('UNCAUGHT_EXCEPTION');
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('process.unhandledRejection', { reason: String(reason), promise });
+      shutdown('UNHANDLED_REJECTION');
+    });
+    
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    
+    logger.info('acp.codex.started', { mode: process.env.USE_CODEX_CLI === 'true' ? 'CLI' : 'API' });
+  } catch (error) {
+    logger.error('acp.codex.startup.failed', { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    process.exit(1);
+  }
 }
 

@@ -45,7 +45,7 @@ export class ProtocolIO extends EventEmitter {
         try {
           const msg = JSON.parse(line) as ProtocolMessage;
           this.emit('message', msg);
-        } catch (err) {
+        } catch {
           this.log.warn('protocol.decode.warn', { linePreview: line.slice(0, 120) });
         }
       }

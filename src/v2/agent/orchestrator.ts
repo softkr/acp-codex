@@ -21,7 +21,9 @@ export class Orchestrator {
     private readonly rt: Runtime,
   ) {
     // Check if we should use Codex CLI or API
+    // Default to false if not explicitly set to 'true'
     this.useCodexCLI = process.env.USE_CODEX_CLI === 'true';
+    this.log.info('orchestrator.init', { useCodexCLI: this.useCodexCLI });
     
     // Initialize API client (fallback)
     this.codex = new CodexClient(log, {
@@ -35,28 +37,55 @@ export class Orchestrator {
       codexPath: process.env.CODEX_CLI_PATH || 'codex',
       useLocalCLI: this.useCodexCLI
     });
+    
+    // Handle CLI client errors and exit events
+    this.codexCLI.on('error', (error) => {
+      this.log.error('orchestrator.codex.cli.error', { error: error.message });
+      // Fallback to API mode on CLI errors
+      this.useCodexCLI = false;
+      this.log.info('orchestrator.fallback.api', { reason: 'CLI error' });
+    });
+    
+    this.codexCLI.on('exit', (code) => {
+      this.log.warn('orchestrator.codex.cli.exit', { code });
+      // Fallback to API mode if CLI exits unexpectedly
+      this.useCodexCLI = false;
+      this.log.info('orchestrator.fallback.api', { reason: 'CLI exit' });
+    });
   }
 
   async start() {
     // Try to connect to Codex CLI if enabled
     if (this.useCodexCLI) {
       try {
+        this.log.debug('codex.cli.check.start');
         const isInstalled = await CodexCLIClient.isInstalled();
+        this.log.debug('codex.cli.check.result', { isInstalled });
+        
         if (isInstalled) {
           const version = await CodexCLIClient.getVersion();
           this.log.info('codex.cli.detected', { version });
-          await this.codexCLI.connect();
+          
+          // Try to connect with a longer timeout
+          const connectPromise = this.codexCLI.connect();
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Codex CLI connection timeout')), 10000)
+          );
+          
+          await Promise.race([connectPromise, timeoutPromise]);
         } else {
-          this.log.warn('codex.cli.not.installed', { fallback: 'API' });
+          this.log.info('codex.cli.not.installed', { fallback: 'API' });
           this.useCodexCLI = false;
         }
       } catch (error) {
-        this.log.error('codex.cli.init.failed', { 
+        this.log.info('codex.cli.init.failed', { 
           error: error instanceof Error ? error.message : String(error),
           fallback: 'API'
         });
         this.useCodexCLI = false;
       }
+    } else {
+      this.log.info('codex.cli.disabled', { reason: 'USE_CODEX_CLI=false' });
     }
     
     this.io.on('message', (msg: ProtocolMessage) => {
@@ -76,7 +105,10 @@ export class Orchestrator {
       }
       
       if (t === 'permission.check') {
-        const decision = this.perms.decide({ kind: (msg['kind'] as any) || 'other', resource: msg['resource'] as string });
+        const kind = msg['kind'] as string;
+        const validKinds = ['read', 'write', 'exec', 'network', 'other'] as const;
+        const validKind = validKinds.includes(kind as typeof validKinds[number]) ? kind as 'read' | 'write' | 'exec' | 'network' | 'other' : 'other';
+        const decision = this.perms.decide({ kind: validKind, resource: msg['resource'] as string });
         this.io.send({ id: msg.id, type: 'permission.result', ...decision });
         return;
       }
@@ -85,7 +117,7 @@ export class Orchestrator {
       if (t === 'codex.complete') {
         try {
           const prompt = msg['prompt'] as string;
-          const options = msg['options'] as any || {};
+          const options = msg['options'] as Record<string, unknown> || {};
           
           // Use CLI if available, otherwise fallback to API
           const result = this.useCodexCLI 
